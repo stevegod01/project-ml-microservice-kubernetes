@@ -1,50 +1,111 @@
-[![CircleCI](https://circleci.com/gh/stevegod01/project-ml-microservice-kubernetes.svg?style=svg)](https://circleci.com/gh/stevegod01/project-ml-microservice-kubernetes)
+# Containerized ML inference API
 
-## Project Overview
+A Udacity Cloud DevOps learning project demonstrating a Flask prediction API, Docker packaging, Kubernetes deployment, and automated API checks.
 
-In this project, you will apply the skills you have acquired in this course to operationalize a Machine Learning Microservice API. 
+The maintained service uses Python 3.12 and a small JSON linear model trained reproducibly from the checked-in historical housing dataset. The original sklearn 0.20 pickle and old output logs remain as historical course artifacts; the service does not load that pickle. Predictions have changed from the historical model.
 
-You are given a pre-trained, `sklearn` model that has been trained to predict housing prices in Boston according to several features, such as average rooms in a home and data about highway access, teacher-to-pupil ratios, and so on. You can read more about the data, which was initially taken from Kaggle, on [the data source site](https://www.kaggle.com/c/boston-housing). This project tests your ability to operationalize a Python flask app—in a provided file, `app.py`—that serves out predictions (inference) about housing prices through API calls. This project could be extended to any pre-trained machine learning model, such as those for image recognition and data labeling.
+## What this demonstrates
 
-### Project Tasks
+- An application factory that loads and validates the model at startup.
+- A stable JSON API supporting single requests, batches, and the original course column format.
+- A training-only scaler folded into fixed coefficients: a prediction no longer changes depending on the other rows in a request.
+- Input validation, health checks, bounded requests, and automated regression tests.
+- A non-root container using Waitress; repeatable Kubernetes Deployment updates instead of duplicate pods.
 
-Your project goal is to operationalize this working, machine learning microservice using [kubernetes](https://kubernetes.io/), which is an open-source system for automating the management of containerized applications. In this project you will:
-* Test your project code using linting
-* Complete a Dockerfile to containerize this application
-* Deploy your containerized application using Docker and make a prediction
-* Improve the log statements in the source code for this application
-* Configure Kubernetes and create a Kubernetes cluster
-* Deploy a container using Kubernetes and make a prediction
-* Upload a complete Github repo with CircleCI to indicate that your code has been tested
-
-You can find a detailed [project rubric, here](https://review.udacity.com/#!/rubrics/2576/view).
-
-**The final implementation of the project will showcase your abilities to operationalize production microservices.**
-
----
-
-## Setup the Environment
-
-* Create a virtualenv with Python 3.7 and activate it. Refer to this link for help on specifying the Python version in the virtualenv. 
-```bash
-python3 -m pip install --user virtualenv
-# You should have Python 3.7 available in your host. 
-# Check the Python path using `which python3`
-# Use a command similar to this one:
-python3 -m virtualenv --python=<path-to-Python3.7> .devops
-source .devops/bin/activate
+```mermaid
+flowchart LR
+  Client -->|JSON| API[Flask /predict]
+  Model[Versioned JSON coefficients] --> API
+  API --> Response[Prediction array]
+  CSV[Historical course dataset] --> Training[Offline training script]
+  Training --> Model
 ```
-* Run `make install` to install the necessary dependencies
 
-### Running `app.py`
+## Run and test locally
 
-1. Standalone:  `python app.py`
-2. Run in Docker:  `./run_docker.sh`
-3. Run in Kubernetes:  `./run_kubernetes.sh`
+Python 3.12 is the tested runtime.
 
-### Kubernetes Steps
+```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -m ruff check .
+python -m pytest -q
+python app.py
+```
 
-* Setup and Configure Docker locally
-* Setup and Configure Kubernetes locally
-* Create Flask app in Container
-* Run via kubectl
+The server listens on port 8080 by default. Set PORT to change it. From a separate shell:
+
+```bash
+PORT=8080 bash make_prediction.sh
+```
+
+Expected response for the included sample, rounded here:
+
+```json
+{"prediction": [30.679328738467255]}
+```
+
+GET /health returns HTTP 200 with `{"status":"ok","model_version":1}` after the model loads. Importing `app:app` also loads the model, so WSGI execution and direct execution have the same behavior.
+
+## API contract
+
+POST /predict requires Content-Type: application/json and one to 100 rows:
+
+```json
+{
+  "instances": [
+    {"CHAS": 0, "RM": 6.575, "TAX": 296, "PTRATIO": 15.3, "B": 396.9, "LSTAT": 4.98}
+  ]
+}
+```
+
+Each row must contain exactly the six documented features with finite JSON numbers. Strings, booleans, missing/extra fields, unequal legacy column lengths, malformed JSON, and empty/oversized batches are rejected with a JSON error and HTTP 400. Wrong content type returns 415; requests over 64 KiB return 413.
+
+The original format `{"CHAS":{"0":0}, "RM":{"0":6.575}, ...}` is also supported when every feature column has identical row keys. Response order follows input row order.
+
+## Model and reproducibility
+
+```bash
+python -m pip install -r requirements-training.txt
+python train_model.py
+```
+
+Training uses a fixed seed (42), 404 training rows and 102 held-out rows, with ordinary least squares. The artifact records the dataset SHA-256, NumPy version, coefficients, intercept and held-out RMSE. The local run on 18 September 2026 yielded RMSE **4.5881** in the dataset's historical target units (thousands of USD). This is a small educational baseline, not a current housing valuation model. The legacy feature names and historical dataset are retained for compatibility with the course.
+
+The model file is reproducible to floating-point precision; different numerical libraries can produce insignificant rounding differences. The old output files describe the old implementation and are not evidence of current Docker/Kubernetes execution.
+
+## Docker and Kubernetes
+
+```bash
+bash run_docker.sh
+bash make_prediction.sh
+```
+
+The script builds `udacity-inference:local` and exposes localhost:8000 to container port 8080. Containers are removed on exit. To publish, first authenticate to a registry you own, then explicitly choose the image:
+
+```bash
+IMAGE=your-account/inference:v1 bash upload_docker.sh
+```
+
+For a configured test Kubernetes cluster, ensure the image is accessible and the namespace exists:
+
+```bash
+IMAGE=your-account/inference:v1 NAMESPACE=default bash run_kubernetes.sh
+```
+
+The script applies a named Deployment, waits up to 120 seconds for rollout, and forwards localhost:8000. Repeating it updates the same Deployment. Stop port-forwarding with Ctrl+C. Remove the demo when done:
+
+```bash
+kubectl delete deployment housing-inference --namespace=default
+```
+
+These commands create local containers or cluster resources only when explicitly run. CI does not publish images or deploy.
+
+## Validation and provenance
+
+On 18 September 2026, local verification passed **20 API tests** and Ruff checks with Python 3.12.14. CircleCI and [GitHub Actions](.github/workflows/validate.yml) install pinned test dependencies, lint, run the API tests, and store JUnit results. A remote green run is not claimed until those workflows execute.
+
+Docker and Kubernetes execution were not verified during this cleanup because the local Docker daemon was unavailable. The image build, registry access, cluster permissions and rollout remain environment checks for an operator.
+
+Based on Udacity's [DevOps Microservices course](https://github.com/udacity/DevOps_Microservices). The original course supplies the application concept and historical dataset/model. This repository's current operational work includes the container/Kubernetes scripts, validation, reproducible replacement model, and CI. See [change report](CHANGE_REPORT.md).

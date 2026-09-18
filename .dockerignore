@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+.pytest_cache
+.ruff_cache
+hadolint
+model_data/*.joblib
+model_data/housing.csv
+output_txt_files

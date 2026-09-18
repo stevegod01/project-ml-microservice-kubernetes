@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "features": [
+    "CHAS",
+    "RM",
+    "TAX",
+    "PTRATIO",
+    "B",
+    "LSTAT"
+  ],
+  "coefficients": [
+    2.3364933298243935,
+    4.55449958627794,
+    -0.0013518926559327024,
+    -0.8082021935502179,
+    0.0083864526735412,
+    -0.5091693676076995
+  ],
+  "intercept": 12.706228130722055,
+  "training": {
+    "method": "ordinary least squares; scaling fitted only on training rows",
+    "seed": 42,
+    "training_rows": 404,
+    "holdout_rows": 102,
+    "holdout_rmse": 4.588141041492039,
+    "target_unit": "historical median home value in thousands of USD",
+    "dataset_sha256": "375129a38b523390c0844089f9d6b36c1c592878babec2a545a8f3a0e476d883",
+    "numpy_version": "2.5.3"
+  }
+}

@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
-# This file tags and uploads an image to Docker Hub
-
-# Assumes that an image is built via `run_docker.sh`
-
-# Step 1:
-# Create dockerpath
-dockerpath=stevegod/devops
-
-# Step 2:  
-# Authenticate & tag
-echo "Docker ID and Image: $dockerpath"
-docker login
-docker --tag devops $dockerpath:latest
-
-# Step 3:
-# Push image to a docker repository
-docker push $dockerpath:latest
+set -euo pipefail
+# Authenticate separately with docker login; no implicit registry/account.
+: "${IMAGE:?Set IMAGE to a registry/repository:version you own}"
+: "${LOCAL_IMAGE:=udacity-inference:local}"
+docker image inspect "$LOCAL_IMAGE" >/dev/null
+docker tag "$LOCAL_IMAGE" "$IMAGE"
+docker push "$IMAGE"

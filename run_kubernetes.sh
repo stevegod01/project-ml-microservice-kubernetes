@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
-
-# This tags and uploads an image to Docker Hub
-
-# Step 1:
-# This is your Docker ID/path
-dockerpath="stevegod/devops"
-
-# Step 2
-# Run the Docker Hub container with kubernetes
-kubectl run devops\
-	--image=$dockerpath\
-	--port=80 --labels app=devops
-
-# Step 3:
-# List kubernetes pods
-kubectl get pods
-# Step 4:
-# Forward the container port to a host
-kubectl port-forward devops 8000:80
+set -euo pipefail
+cd "$(dirname "$0")"
+: "${IMAGE:?Set IMAGE to a built image available to the selected cluster}"
+NAMESPACE="${NAMESPACE:-default}"
+PORT="${PORT:-8000}"
+kubectl create deployment housing-inference --image="$IMAGE" --port=8080 \
+  --namespace="$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+kubectl rollout status deployment/housing-inference --namespace="$NAMESPACE" --timeout=120s
+kubectl port-forward deployment/housing-inference "${PORT}:8080" --namespace="$NAMESPACE"

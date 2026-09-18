@@ -1,23 +1,11 @@
-FROM python:3.7.3-stretch
-
-# Step 1:
-# Create a working directory
+FROM python:3.12-slim
 WORKDIR /app
-
-# Step 2:
-# Copy source code to working directory
-COPY . app.py /app/
-
-# Step 3:
-# Install packages from requirements.txt
-# hadolint ignore=DL3013
-RUN pip install --upgrade pip &&\
-    pip install --trusted-host pypi.python.org -r requirements.txt
-
-# Step 4:
-# Expose port 80
-EXPOSE 80
-
-# Step 5:
-# Run app.py at container launch
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && useradd --create-home --uid 10001 appuser
+COPY app.py .
+COPY model_data/linear_model.json model_data/linear_model.json
+USER appuser
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)" || exit 1
 CMD ["python", "app.py"]
